@@ -6,8 +6,8 @@ import type { ErrorCountStat, LogEntry } from "@/types";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { LogsTable } from "@/components/dashboard/logs-table";
 import { AlertTriangle, CheckCircle2, Slash } from "lucide-react";
-import { logger } from '@/lib/logger'; // Example of using the logger
-import { metrics, trace } from '@opentelemetry/api';
+import { logger } from '@/lib/logger';
+import { metrics, trace, context, SpanStatusCode } from '@opentelemetry/api';
 
 // Mock data generation (client-side for demonstration)
 const generateMockLogs = (count: number, type: 'delivered' | 'blocked'): LogEntry[] => {
@@ -70,8 +70,7 @@ export default function DashboardPage() {
         // Simulate an error for metrics and alerting demo
         const shouldSimulateError = Math.random() < 0.3; // 30% chance to simulate an error
         if (shouldSimulateError) {
-          // Commenting out the line causing the "Simulated critical dashboard error on load"
-          // logger.text('error', 'Simulated critical dashboard error on load', { component: 'DashboardPage' });
+          logger.text('error', 'Simulated critical dashboard error on load', { component: 'DashboardPage' });
           simulatedErrorCounter.add(1);
           setSimulatedErrorCount(prev => {
             const newCount = prev + 1;
