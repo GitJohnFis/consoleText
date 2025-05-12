@@ -1,27 +1,24 @@
 {
+  "extends": "@tsconfig/svelte/tsconfig.json",
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
     "resolveJsonModule": true,
+    "allowJs": true, // Allow JavaScript files to be imported
+    "checkJs": true, // Type-check JavaScript files
     "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "esModuleInterop": true, // Enables esModuleInterop
+    "moduleResolution": "bundler", // or "node" or "classic" depending on your project needs
+    // "baseUrl": ".", // uncomment if you have path aliases
+    // "paths": { // uncomment if you have path aliases
+    //   "@/*": ["src/*"] 
+    // },
+    "sourceMap": true,
+    "strict": true,
+    "noEmit": true, // Vite handles emission, Svelte-check does the type checking
+    "skipLibCheck": true, // Optional: Speeds up compilation by skipping type checking of declaration files
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*.d.ts", "src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "vite.config.ts", "svelte.config.js"],
+  "references": [{ "path": "./tsconfig.node.json" }]
 }
