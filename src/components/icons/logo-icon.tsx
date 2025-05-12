@@ -1,6 +1,6 @@
-import { MessageSquareText } from 'lucide-react';
+import { TerminalSquare } from 'lucide-react';
 import type { LucideProps } from 'lucide-react';
 
 export function LogoIcon(props: LucideProps) {
-  return <MessageSquareText {...props} />;
+  return <TerminalSquare {...props} />;
 }
