@@ -2,7 +2,7 @@
 // Actual override of global console or deep integration with Datadog/PagerDuty
 // would require more extensive setup and possibly backend components.
 
-import { trace, context } from '@opentelemetry/api';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 
 /**
  * Enhanced console logging utility.
@@ -22,24 +22,34 @@ export const logger = {
     const spanContext = currentSpan?.spanContext();
     
     let logMessage = `[${timestamp}] ${levelTag}`;
-    if (spanContext && spanContext.traceId !== '00000000000000000000000000000000') {
+    if (spanContext && spanContext.traceId && spanContext.traceId !== '00000000000000000000000000000000') {
       logMessage += ` [traceId=${spanContext.traceId} spanId=${spanContext.spanId}]`;
     }
     logMessage += ` ${message}`;
 
     const logData = typeof data === 'object' && data !== null ? data : {};
+    const dataString = Object.keys(logData).length > 0 ? ` ${JSON.stringify(logData)}` : '';
+    const fullLogMessage = `${logMessage}${dataString}`;
 
     // Standard console output
     switch (level) {
       case 'error':
-        console.error(logMessage, logData);
+        console.error(fullLogMessage);
+        currentSpan?.setStatus({ code: SpanStatusCode.ERROR, message: message });
+        if (data && (data as any).error instanceof Error) {
+          currentSpan?.recordException((data as any).error);
+        } else if (typeof data === 'string') {
+          currentSpan?.recordException(data);
+        }
         break;
       case 'warn':
-        console.warn(logMessage, logData);
+        console.warn(fullLogMessage);
+        currentSpan?.addEvent(`WARN: ${message}`, typeof data === 'object' ? data as Record<string, any> : {data});
         break;
       case 'info':
       default:
-        console.log(logMessage, logData);
+        console.log(fullLogMessage);
+        currentSpan?.addEvent(`INFO: ${message}`, typeof data === 'object' ? data as Record<string, any> : {data});
         break;
     }
 
