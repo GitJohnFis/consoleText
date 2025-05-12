@@ -12,8 +12,8 @@ export interface LogEntry {
   timestamp: Date;
   message: string;
   source?: string; // e.g. recipient name for delivered, or system part for blocked
-  type: 'delivered' | 'blocked';
-  details?: string;
+  level: 'error' | 'warn' | 'info' | 'debug' | 'delivered' | 'blocked';
+  details?: Record<string, any> | string; // Allow structured details or simple string
 }
 
 export interface ErrorCountStat {
@@ -21,6 +21,17 @@ export interface ErrorCountStat {
   title: string;
   value: string;
   icon: React.ElementType;
-  change?: string; // e.g., "+5.2% from last month"
+  description?: string;
   changeType?: 'positive' | 'negative';
+}
+
+export interface Alert {
+  id: string;
+  timestamp: Date;
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  description: string;
+  source: string; // e.g., "API Errors Monitor", "SMS Delivery System"
+  acknowledged?: boolean;
+  relatedLogsQuery?: string; // Optional: a query string to filter logs
 }

@@ -1,6 +1,6 @@
 
 import { trace, context, SpanStatusCode, Attributes } from '@opentelemetry/api';
-import { logs, SeverityNumber, LogRecord } from '@opentelemetry/api-logs';
+import { logs, SeverityNumber, LogRecord as OtelLogRecord } from '@opentelemetry/api-logs'; // Renamed to avoid conflict with local types if any
 
 // Get a logger instance from the OTel Logs API
 const otelLogger = logs.getLogger(
@@ -17,7 +17,11 @@ const otelLogger = logs.getLogger(
  * logger.text('info', 'User successfully logged in', { userId: 123 });
  */
 export const logger = {
-  text: (level: 'error' | 'warn' | 'info', message: string, data?: Record<string, any>): void => {
+  text: (
+    level: 'error' | 'warn' | 'info' | 'debug' | 'delivered' | 'blocked',
+    message: string,
+    data?: Record<string, any>
+  ): void => {
     const timestamp = new Date(); // OTel will use its own high-precision timestamp
     
     const currentSpan = trace.getSpan(context.active());
@@ -28,7 +32,18 @@ export const logger = {
     if (data) {
       for (const key in data) {
         if (Object.prototype.hasOwnProperty.call(data, key)) {
-          logAttributes[key] = String(data[key]);
+          // Convert all data values to string for OTel attributes, as some backends might be strict
+          // However, OTel spec allows for boolean, string, number, array of these.
+          // For simplicity and Datadog compatibility, stringifying complex objects is safer.
+          if (typeof data[key] === 'object' && data[key] !== null) {
+            try {
+              logAttributes[key] = JSON.stringify(data[key]);
+            } catch (e) {
+              logAttributes[key] = '[Unserializable Object]';
+            }
+          } else {
+             logAttributes[key] = String(data[key]);
+          }
         }
       }
     }
@@ -37,8 +52,10 @@ export const logger = {
       logAttributes['trace_id'] = spanContext.traceId;
       logAttributes['span_id'] = spanContext.spanId;
     }
+    logAttributes['log.level'] = level; // Add the custom level as an attribute
 
     let severityNumber: SeverityNumber;
+    // Map custom levels to OTel SeverityNumber
     switch (level) {
       case 'error':
         severityNumber = SeverityNumber.ERROR;
@@ -47,73 +64,92 @@ export const logger = {
         severityNumber = SeverityNumber.WARN;
         break;
       case 'info':
-      default:
+      case 'delivered': // Treat 'delivered' as INFO
         severityNumber = SeverityNumber.INFO;
+        break;
+      case 'debug':
+      case 'blocked': // Treat 'blocked' as DEBUG or custom level
+        severityNumber = SeverityNumber.DEBUG;
+        break;
+      default:
+        severityNumber = SeverityNumber.INFO; // Default to INFO
         break;
     }
 
     // Emit the log record using OTel Logs API
-    const logRecord: LogRecord = {
+    const otelLogRecord: OtelLogRecord = {
       body: message,
       severityNumber,
       attributes: logAttributes,
       timestamp: timestamp, 
     };
-    otelLogger.emit(logRecord);
+    otelLogger.emit(otelLogRecord);
 
-    // Interact with the current OpenTelemetry span based on log level
-    if (currentSpan) {
-      switch (level) {
-        case 'error':
-          currentSpan.setStatus({ code: SpanStatusCode.ERROR, message: message });
-          let exceptionToRecord: Error;
-          const exceptionAttributes: Attributes = {};
+    // Console logging with structured data if provided
+    const consoleLogParts: any[] = [`[${timestamp.toISOString()}] [${level.toUpperCase()}] ${message}`];
+    if (data && Object.keys(data).length > 0) {
+        // For browser console, logging the object directly often gives better inspection tools
+        consoleLogParts.push(data);
+    }
+    
+    switch (level) {
+      case 'error':
+        console.error(...consoleLogParts);
+        if (currentSpan) {
+            currentSpan.setStatus({ code: SpanStatusCode.ERROR, message: message });
+            let exceptionToRecord: Error;
+            const exceptionAttributes: Attributes = {};
 
-          if (typeof data === 'object' && data !== null) {
-              Object.entries(data).forEach(([key, value]) => {
-                  if (key !== 'error') { 
-                      exceptionAttributes[`log.data.${key}`] = String(value);
-                  }
-              });
-          }
+            if (typeof data === 'object' && data !== null) {
+                Object.entries(data).forEach(([key, value]) => {
+                    if (key !== 'error') { 
+                        exceptionAttributes[`log.data.${key}`] = String(value);
+                    }
+                });
+            }
 
-          if (data && data.error instanceof Error) {
-            exceptionToRecord = data.error;
-          } else { 
-            exceptionToRecord = new Error(message);
+            if (data && data.error instanceof Error) {
+              exceptionToRecord = data.error;
+            } else { 
+              exceptionToRecord = new Error(message);
+            }
+            
+            currentSpan.recordException(exceptionToRecord, exceptionAttributes);
+        }
+        break;
+      case 'warn':
+        console.warn(...consoleLogParts);
+         if (currentSpan) {
+            const warnEventAttributes: Attributes = { 'log.level': 'warn', ...logAttributes };
+            currentSpan.addEvent(`WARN: ${message}`, warnEventAttributes);
           }
-          
-          currentSpan.recordException(exceptionToRecord, exceptionAttributes);
-          break;
-        case 'warn':
-          const warnEventAttributes: Attributes = {};
-          if (typeof data === 'object' && data !== null) {
-              Object.entries(data).forEach(([key, value]) => {
-                  warnEventAttributes[`log.data.${key}`] = String(value);
-              });
-          } else if (data !== undefined) {
-              warnEventAttributes['log.data'] = String(data);
+        break;
+      case 'info':
+      case 'delivered':
+        console.info(...consoleLogParts);
+        if (currentSpan) {
+            const infoEventAttributes: Attributes = { 'log.level': level, ...logAttributes };
+            currentSpan.addEvent(`INFO: ${message}`, infoEventAttributes);
           }
-          currentSpan.addEvent(`WARN: ${message}`, warnEventAttributes);
-          break;
-        case 'info':
-        default:
-          const infoEventAttributes: Attributes = {};
-          if (typeof data === 'object' && data !== null) {
-              Object.entries(data).forEach(([key, value]) => {
-                  infoEventAttributes[`log.data.${key}`] = String(value);
-              });
-          } else if (data !== undefined) {
-              infoEventAttributes['log.data'] = String(data);
+        break;
+      case 'debug':
+      case 'blocked':
+        console.debug(...consoleLogParts); // Or console.log for wider visibility
+         if (currentSpan) {
+            const debugEventAttributes: Attributes = { 'log.level': level, ...logAttributes };
+            currentSpan.addEvent(`DEBUG: ${message}`, debugEventAttributes);
           }
-          currentSpan.addEvent(`INFO: ${message}`, infoEventAttributes);
-          break;
-      }
+        break;
+      default:
+        console.log(...consoleLogParts);
+        if (currentSpan) {
+            const defaultEventAttributes: Attributes = { 'log.level': level, ...logAttributes };
+            currentSpan.addEvent(message, defaultEventAttributes);
+          }
+        break;
     }
 
-    // Placeholder for direct PagerDuty integration (usually Datadog handles this)
-    // This console log is kept separate as it's a specific developer message.
-    if (level === 'error' && !process.env.DATADOG_API_KEY) { 
+    if (level === 'error' && !process.env.DATADOG_API_KEY && typeof window !== 'undefined') { 
       console.log('%c[[SIMULATING ERROR FORWARDING TO DATADOG/PAGERDUTY - DATADOG_API_KEY not set]]', 'color: orange; font-weight: bold;');
     }
   },
