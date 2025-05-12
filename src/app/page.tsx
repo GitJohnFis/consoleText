@@ -1,3 +1,4 @@
+
 "use client"; // Required for mock data and stateful components
 
 import { useEffect, useState } from 'react';
@@ -43,7 +44,7 @@ export default function DashboardPage() {
     ]);
     
     // Example of using the logger on page load
-    logger.info('Dashboard loaded', { userAgent: navigator.userAgent });
+    logger.text('info', 'Dashboard loaded', { userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A' });
     // logger.text('error', 'Simulated critical dashboard error on load', { component: 'DashboardPage' });
 
   }, []);
@@ -73,3 +74,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

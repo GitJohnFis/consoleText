@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Recipient } from "@/types";
@@ -51,7 +52,7 @@ export function RecipientsTable({
       description: `${recipient.name} has been successfully deleted.`,
       variant: "destructive"
     });
-    logger.warn(`Recipient deleted`, { name: recipient.name, id: recipient.id });
+    logger.text('warn', `Recipient deleted`, { name: recipient.name, id: recipient.id });
   };
 
   return (
@@ -141,3 +142,4 @@ export function RecipientsTable({
     </div>
   );
 }
+

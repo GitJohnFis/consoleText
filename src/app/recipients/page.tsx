@@ -1,3 +1,4 @@
+
 "use client"; // Required for useState and useEffect
 
 import { useState, useEffect } from "react";
@@ -38,7 +39,7 @@ export default function RecipientsPage() {
   useEffect(() => {
     // Simulate fetching data
     setRecipients(initialMockRecipients);
-    logger.info('Recipients page loaded');
+    logger.text('info', 'Recipients page loaded');
   }, []);
 
   const handleAddRecipient = (newRecipient: Recipient) => {
@@ -74,3 +75,4 @@ export default function RecipientsPage() {
     </div>
   );
 }
+

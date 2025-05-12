@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -77,7 +78,7 @@ export function RecipientFormDialog({ recipient, onSave, triggerButton }: Recipi
       title: recipient ? "Recipient Updated" : "Recipient Added",
       description: `${data.name} has been successfully ${recipient ? 'updated' : 'added'}.`,
     });
-    logger.info(`Recipient ${recipient ? 'updated' : 'added'}`, { name: data.name });
+    logger.text('info', `Recipient ${recipient ? 'updated' : 'added'}`, { name: data.name });
     setIsOpen(false);
     form.reset();
   }
@@ -230,3 +231,4 @@ export function RecipientFormDialog({ recipient, onSave, triggerButton }: Recipi
     </Dialog>
   );
 }
+
