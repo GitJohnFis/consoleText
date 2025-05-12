@@ -1,1 +1,1 @@
-# Logging for all tingz
+## Logging for all tingz
