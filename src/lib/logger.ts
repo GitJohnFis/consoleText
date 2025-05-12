@@ -1,3 +1,4 @@
+
 import { trace, context as apiContext, SpanStatusCode, Attributes } from '@opentelemetry/api';
 import { logs, SeverityNumber, LogRecord as OtelLogRecord } from '@opentelemetry/api-logs';
 
@@ -34,7 +35,6 @@ export const logger = {
           if (data[key] instanceof Error) {
             logAttributes[`error.message`] = data[key].message;
             logAttributes[`error.stack`] = data[key].stack;
-            // also add to main attributes for simpler querying if needed
             logAttributes[key] = `Error: ${data[key].message}`;
           } else if (typeof data[key] === 'object' && data[key] !== null) {
             try {
@@ -53,7 +53,7 @@ export const logger = {
       logAttributes['trace_id'] = spanContext.traceId;
       logAttributes['span_id'] = spanContext.spanId;
     }
-    logAttributes['log.level'] = level; // Explicitly set log.level attribute
+    logAttributes['log.level'] = level;
 
     let severityNumber: SeverityNumber;
     switch (level) {
@@ -72,27 +72,8 @@ export const logger = {
         severityNumber = SeverityNumber.DEBUG;
         break;
       default:
-        severityNumber = SeverityNumber.INFO; // Default to INFO for unknown levels
+        severityNumber = SeverityNumber.INFO;
         break;
-    }
-
-    // Construct the full message string for console display
-    let fullConsoleLogMessage = `[${timestamp.toISOString()}] [${level.toUpperCase()}] ${message}`;
-    if (data && Object.keys(data).length > 0) {
-        try {
-            const dataToLogForMessage = { ...data }; // Clone data to avoid mutating the original
-            if (data.error instanceof Error) {
-                // Append error details to the main message string
-                fullConsoleLogMessage += ` Error: ${data.error.message}. Stack: ${data.error.stack}`;
-                delete dataToLogForMessage.error; // Avoid redundant stringification of the error object
-            }
-            // Append remaining data as JSON string
-            if (Object.keys(dataToLogForMessage).length > 0) {
-                 fullConsoleLogMessage += ` ${JSON.stringify(dataToLogForMessage)}`;
-            }
-        } catch (e) {
-            fullConsoleLogMessage += ' [Unserializable data in message]';
-        }
     }
     
     // OTel log record uses the concise message for 'body' and structured data in 'attributes'
@@ -105,64 +86,100 @@ export const logger = {
     otelLogger.emit(otelLogRecord);
 
     // --- Console Logging ---
-    // Use the fully constructed string for all console outputs to ensure consistency,
-    // especially for how Next.js error overlay captures and displays console messages.
+    // Use a multi-argument approach for console logging.
+    const consolePrefix = `[${timestamp.toISOString()}] [${level.toUpperCase()}]`;
+
     switch (level) {
       case 'error':
-        console.error(fullConsoleLogMessage);
+        if (data) {
+            console.error(consolePrefix, message, data);
+        } else {
+            console.error(consolePrefix, message);
+        }
         if (currentSpan) {
-            currentSpan.setStatus({ code: SpanStatusCode.ERROR, message: message }); // Set span status with concise message
+            currentSpan.setStatus({ code: SpanStatusCode.ERROR, message: message });
             
             let exceptionToRecord: Error;
-            const exceptionAttributes: Attributes = {}; // Attributes for the exception event
+            const exceptionAttributes: Attributes = {};
 
-            // Populate exceptionAttributes from data, excluding 'error' field if it's an Error instance
             if (typeof data === 'object' && data !== null) {
                 Object.entries(data).forEach(([key, value]) => {
-                    if (key !== 'error' || !(value instanceof Error)) { // Add if not the error field itself, or if error field is not an Error
-                        exceptionAttributes[`log.data.${key}`] = String(value);
+                    if (key !== 'error' || !(value instanceof Error)) {
+                        try {
+                            exceptionAttributes[`log.data.${key}`] = typeof value === 'string' ? value : JSON.stringify(value);
+                        } catch {
+                            exceptionAttributes[`log.data.${key}`] = '[Unserializable value in exception attributes]';
+                        }
                     }
                 });
             }
 
             if (data && data.error instanceof Error) {
-              exceptionToRecord = data.error; // Use the provided Error object
-            } else { 
-              // Create a new Error using the full log message for context if no specific Error object was passed
-              exceptionToRecord = new Error(fullConsoleLogMessage);
+              exceptionToRecord = data.error;
+            } else {
+              // Create a new Error object for recordException
+              let errorMsgForException = `${consolePrefix} ${message}`;
+              if (data) {
+                try {
+                    const dataWithoutErrorField = { ...data };
+                    if (data.error) delete dataWithoutErrorField.error; // Avoid duplicating error if it was just a string
+                    if (Object.keys(dataWithoutErrorField).length > 0) {
+                       errorMsgForException += ` ${JSON.stringify(dataWithoutErrorField)}`;
+                    }
+                } catch {
+                    errorMsgForException += ` [Unserializable data for exception message]`;
+                }
+              }
+              exceptionToRecord = new Error(errorMsgForException);
             }
             currentSpan.recordException(exceptionToRecord, exceptionAttributes);
         }
         break;
       case 'warn':
-        console.warn(fullConsoleLogMessage);
-         if (currentSpan) {
+        if (data) {
+            console.warn(consolePrefix, message, data);
+        } else {
+            console.warn(consolePrefix, message);
+        }
+        if (currentSpan) {
             const warnEventAttributes: Attributes = { 'log.level': 'warn', ...logAttributes };
             currentSpan.addEvent(`WARN: ${message}`, warnEventAttributes);
-          }
+        }
         break;
       case 'info':
       case 'delivered':
-        console.info(fullConsoleLogMessage);
+        if (data) {
+            console.info(consolePrefix, message, data);
+        } else {
+            console.info(consolePrefix, message);
+        }
         if (currentSpan) {
             const infoEventAttributes: Attributes = { 'log.level': level, ...logAttributes };
             currentSpan.addEvent(`INFO: ${message}`, infoEventAttributes);
-          }
+        }
         break;
       case 'debug':
       case 'blocked':
-        console.debug(fullConsoleLogMessage);
-         if (currentSpan) {
+        if (data) {
+            console.debug(consolePrefix, message, data);
+        } else {
+            console.debug(consolePrefix, message);
+        }
+        if (currentSpan) {
             const debugEventAttributes: Attributes = { 'log.level': level, ...logAttributes };
             currentSpan.addEvent(`DEBUG: ${message}`, debugEventAttributes);
-          }
+        }
         break;
       default:
-        console.log(fullConsoleLogMessage);
+        if (data) {
+            console.log(consolePrefix, message, data);
+        } else {
+            console.log(consolePrefix, message);
+        }
         if (currentSpan) {
             const defaultEventAttributes: Attributes = { 'log.level': level, ...logAttributes };
             currentSpan.addEvent(message, defaultEventAttributes);
-          }
+        }
         break;
     }
 
@@ -176,11 +193,17 @@ export const logger = {
 // Check if DATADOG_API_KEY is set (browser-safe check)
 const DATADOG_API_KEY_SET = (() => {
   try {
+    // Checking for process and process.env to ensure it's Node-like environment
     if (typeof process !== 'undefined' && process.env) {
-      return !!process.env.DATADOG_API_KEY;
+      // Using Next.js specific way to access public env vars if available, otherwise fallback
+      return !!(process.env.NEXT_PUBLIC_DATADOG_API_KEY || process.env.DATADOG_API_KEY);
     }
+    // For browser environments, you might need a different mechanism if keys are exposed there,
+    // e.g., through NEXT_PUBLIC_ variables.
+    // Assuming for now that if not in Node-like env, key is not set for this check.
     return false; 
   } catch (e) {
+    // Catch errors if process or process.env is not accessible (e.g. strict browser sandboxes)
     return false;
   }
 })();
