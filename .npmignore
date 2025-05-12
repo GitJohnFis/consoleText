@@ -1,11 +1,10 @@
-.nyc_output/
-coverage/
-docs/
-examples/
-scratch/
+node_modules/
+build/
 test/
 .*
 *.log
-*.md
+*.tgz
+.vscode/
+.idx/
 appveyor.yml
 typescript.json
