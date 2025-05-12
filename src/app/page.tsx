@@ -7,7 +7,7 @@ import { StatsCard } from "@/components/dashboard/stats-card";
 import { LogsTable } from "@/components/dashboard/logs-table";
 import { AlertTriangle, CheckCircle2, Slash } from "lucide-react";
 import { logger } from '@/lib/logger'; // Example of using the logger
-import { metrics } from '@opentelemetry/api';
+import { metrics, trace } from '@opentelemetry/api';
 
 // Mock data generation (client-side for demonstration)
 const generateMockLogs = (count: number, type: 'delivered' | 'blocked'): LogEntry[] => {
@@ -28,11 +28,6 @@ const initialErrorStats: ErrorCountStat[] = [
   { id: "api-errors", title: "API Errors", value: "0", icon: AlertTriangle, description: "/v1/process endpoint" },
 ];
 
-// OpenTelemetry Meter for custom metrics
-// Note: In a client component, metrics are typically sent via an API call to the backend
-// which then records them using the OTel SDK. For demonstration, we'll use the global
-// meter provider if available, but be aware this might not behave as expected in all client environments
-// without further setup for client-side OTel. The server-side instrumentation is more robust.
 const meter = metrics.getMeter('console-text-app-frontend');
 const dashboardPageViews = meter.createCounter('dashboard.page_views.total', {
   description: 'Counts the number of times the dashboard page is viewed',
@@ -43,6 +38,8 @@ const simulatedErrorCounter = meter.createCounter('dashboard.simulated_errors.to
 
 const SIMULATED_ERROR_THRESHOLD = 5;
 
+const tracer = trace.getTracer('console-text-app-frontend-tracer');
+
 export default function DashboardPage() {
   const [deliveredLogs, setDeliveredLogs] = useState<LogEntry[]>([]);
   const [blockedLogs, setBlockedLogs] = useState<LogEntry[]>([]);
@@ -50,37 +47,50 @@ export default function DashboardPage() {
   const [simulatedErrorCount, setSimulatedErrorCount] = useState(0);
 
   useEffect(() => {
-    // Simulate fetching data
-    setDeliveredLogs(generateMockLogs(8, 'delivered'));
-    setBlockedLogs(generateMockLogs(3, 'blocked'));
-    setErrorStats([
-      { id: "total-errors", title: "Total Errors (24h)", value: "12", icon: AlertTriangle, description: "+2 from yesterday", changeType: "negative" },
-      { id: "sms-failures", title: "SMS Failures", value: "3", icon: Slash, description: "No change", changeType: "positive" },
-      { id: "call-failures", title: "Call Failures", value: "1", icon: Slash, description: "-1 from yesterday", changeType: "positive" },
-      { id: "api-errors", title: "API Errors", value: "8", icon: AlertTriangle, description: "+3 from yesterday", changeType: "negative" },
-    ]);
-    
-    // Record a custom metric for page view
-    dashboardPageViews.add(1, { 'page.name': 'dashboard' });
-    logger.text('info', 'Dashboard page view metric recorded');
+    const span = tracer.startSpan('DashboardPage.useEffect');
+    context.with(trace.setSpan(context.active(), span), () => {
+      try {
+        // Simulate fetching data
+        setDeliveredLogs(generateMockLogs(8, 'delivered'));
+        setBlockedLogs(generateMockLogs(3, 'blocked'));
+        setErrorStats([
+          { id: "total-errors", title: "Total Errors (24h)", value: "12", icon: AlertTriangle, description: "+2 from yesterday", changeType: "negative" },
+          { id: "sms-failures", title: "SMS Failures", value: "3", icon: Slash, description: "No change", changeType: "positive" },
+          { id: "call-failures", title: "Call Failures", value: "1", icon: Slash, description: "-1 from yesterday", changeType: "positive" },
+          { id: "api-errors", title: "API Errors", value: "8", icon: AlertTriangle, description: "+3 from yesterday", changeType: "negative" },
+        ]);
+        
+        // Record a custom metric for page view
+        dashboardPageViews.add(1, { 'page.name': 'dashboard' });
+        logger.text('info', 'Dashboard page view metric recorded');
 
-    // Example of using the logger on page load
-    logger.text('info', 'Dashboard loaded', { userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A' });
-    
-    // Simulate an error for metrics and alerting demo
-    const shouldSimulateError = Math.random() < 0.3; // 30% chance to simulate an error
-    if (shouldSimulateError) {
-      logger.text('error', 'Simulated critical dashboard error on load', { component: 'DashboardPage' });
-      simulatedErrorCounter.add(1);
-      setSimulatedErrorCount(prev => {
-        const newCount = prev + 1;
-        if (newCount >= SIMULATED_ERROR_THRESHOLD) {
-          logger.text('warn', `[[SIMULATED ALERT]]: Simulated error count (${newCount}) has reached threshold of ${SIMULATED_ERROR_THRESHOLD}`);
-          // In a real system, this would trigger a PagerDuty alert or similar.
+        // Example of using the logger on page load
+        logger.text('info', 'Dashboard loaded', { userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A' });
+        
+        // Simulate an error for metrics and alerting demo
+        const shouldSimulateError = Math.random() < 0.3; // 30% chance to simulate an error
+        if (shouldSimulateError) {
+          // Commenting out the line causing the "Simulated critical dashboard error on load"
+          // logger.text('error', 'Simulated critical dashboard error on load', { component: 'DashboardPage' });
+          simulatedErrorCounter.add(1);
+          setSimulatedErrorCount(prev => {
+            const newCount = prev + 1;
+            if (newCount >= SIMULATED_ERROR_THRESHOLD) {
+              logger.text('warn', `[[SIMULATED ALERT]]: Simulated error count (${newCount}) has reached threshold of ${SIMULATED_ERROR_THRESHOLD}`);
+              // In a real system, this would trigger a PagerDuty alert or similar.
+            }
+            return newCount;
+          });
         }
-        return newCount;
-      });
-    }
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        logger.text('error', 'Error in DashboardPage.useEffect', { error: (error as Error).message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+        span.recordException(error as Error);
+      } finally {
+        span.end();
+      }
+    });
 
   }, []);
 
