@@ -2,6 +2,8 @@
 // Actual override of global console or deep integration with Datadog/PagerDuty
 // would require more extensive setup and possibly backend components.
 
+import { trace, context } from '@opentelemetry/api';
+
 /**
  * Enhanced console logging utility.
  * In a real application, this would integrate with Datadog/PagerDuty.
@@ -15,26 +17,36 @@ export const logger = {
   text: (level: 'error' | 'warn' | 'info', message: string, data?: unknown): void => {
     const timestamp = new Date().toISOString();
     const levelTag = `[${level.toUpperCase()}]`;
-    const logMessage = `[${timestamp}] ${levelTag} ${message}`;
+    
+    const currentSpan = trace.getSpan(context.active());
+    const spanContext = currentSpan?.spanContext();
+    
+    let logMessage = `[${timestamp}] ${levelTag}`;
+    if (spanContext && spanContext.traceId !== '00000000000000000000000000000000') {
+      logMessage += ` [traceId=${spanContext.traceId} spanId=${spanContext.spanId}]`;
+    }
+    logMessage += ` ${message}`;
+
+    const logData = typeof data === 'object' && data !== null ? data : {};
 
     // Standard console output
     switch (level) {
       case 'error':
-        console.error(logMessage, data || '');
+        console.error(logMessage, logData);
         break;
       case 'warn':
-        console.warn(logMessage, data || '');
+        console.warn(logMessage, logData);
         break;
       case 'info':
       default:
-        console.log(logMessage, data || '');
+        console.log(logMessage, logData);
         break;
     }
 
     // Placeholder for Datadog/PagerDuty integration
     if (level === 'error') {
       // In a real scenario, you would call your Datadog/PagerDuty SDKs here.
-      // e.g., sendToDatadog({ timestamp, level, message, data });
+      // e.g., sendToDatadog({ timestamp, level, message, data, trace_id: spanContext?.traceId, span_id: spanContext?.spanId });
       // e.g., triggerPagerDutyIfNeeded({ severity: 'critical', summary: message, details: data });
       console.log('%c[[SIMULATING ERROR FORWARDING TO DATADOG/PAGERDUTY]]', 'color: orange; font-weight: bold;');
     }

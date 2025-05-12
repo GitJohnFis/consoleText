@@ -5,8 +5,9 @@ import { useEffect, useState } from 'react';
 import type { ErrorCountStat, LogEntry } from "@/types";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { LogsTable } from "@/components/dashboard/logs-table";
-import { AlertTriangle, CheckCircle2, Slash, TrendingUp, TrendingDown } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Slash } from "lucide-react";
 import { logger } from '@/lib/logger'; // Example of using the logger
+import { metrics } from '@opentelemetry/api';
 
 // Mock data generation (client-side for demonstration)
 const generateMockLogs = (count: number, type: 'delivered' | 'blocked'): LogEntry[] => {
@@ -27,10 +28,26 @@ const initialErrorStats: ErrorCountStat[] = [
   { id: "api-errors", title: "API Errors", value: "0", icon: AlertTriangle, description: "/v1/process endpoint" },
 ];
 
+// OpenTelemetry Meter for custom metrics
+// Note: In a client component, metrics are typically sent via an API call to the backend
+// which then records them using the OTel SDK. For demonstration, we'll use the global
+// meter provider if available, but be aware this might not behave as expected in all client environments
+// without further setup for client-side OTel. The server-side instrumentation is more robust.
+const meter = metrics.getMeter('console-text-app-frontend');
+const dashboardPageViews = meter.createCounter('dashboard.page_views.total', {
+  description: 'Counts the number of times the dashboard page is viewed',
+});
+const simulatedErrorCounter = meter.createCounter('dashboard.simulated_errors.total', {
+  description: 'Counts simulated errors for alerting demonstration',
+});
+
+const SIMULATED_ERROR_THRESHOLD = 5;
+
 export default function DashboardPage() {
   const [deliveredLogs, setDeliveredLogs] = useState<LogEntry[]>([]);
   const [blockedLogs, setBlockedLogs] = useState<LogEntry[]>([]);
   const [errorStats, setErrorStats] = useState<ErrorCountStat[]>(initialErrorStats);
+  const [simulatedErrorCount, setSimulatedErrorCount] = useState(0);
 
   useEffect(() => {
     // Simulate fetching data
@@ -43,9 +60,27 @@ export default function DashboardPage() {
       { id: "api-errors", title: "API Errors", value: "8", icon: AlertTriangle, description: "+3 from yesterday", changeType: "negative" },
     ]);
     
+    // Record a custom metric for page view
+    dashboardPageViews.add(1, { 'page.name': 'dashboard' });
+    logger.text('info', 'Dashboard page view metric recorded');
+
     // Example of using the logger on page load
     logger.text('info', 'Dashboard loaded', { userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A' });
-    // logger.text('error', 'Simulated critical dashboard error on load', { component: 'DashboardPage' });
+    
+    // Simulate an error for metrics and alerting demo
+    const shouldSimulateError = Math.random() < 0.3; // 30% chance to simulate an error
+    if (shouldSimulateError) {
+      logger.text('error', 'Simulated critical dashboard error on load', { component: 'DashboardPage' });
+      simulatedErrorCounter.add(1);
+      setSimulatedErrorCount(prev => {
+        const newCount = prev + 1;
+        if (newCount >= SIMULATED_ERROR_THRESHOLD) {
+          logger.text('warn', `[[SIMULATED ALERT]]: Simulated error count (${newCount}) has reached threshold of ${SIMULATED_ERROR_THRESHOLD}`);
+          // In a real system, this would trigger a PagerDuty alert or similar.
+        }
+        return newCount;
+      });
+    }
 
   }, []);
 
@@ -65,6 +100,7 @@ export default function DashboardPage() {
             />
           ))}
         </div>
+         <p className="text-sm text-muted-foreground mt-2">Simulated errors for demo: {simulatedErrorCount}</p>
       </section>
 
       <section className="grid gap-6 md:grid-cols-2">
