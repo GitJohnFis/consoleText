@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Search, Filter, X } from "lucide-react";
 import type { LogEntry } from "@/types";
+import { Badge } from "@/components/ui/badge"; // Added import for Badge
 
 const ALL_LEVELS: LogEntry['level'][] = ['error', 'warn', 'info', 'debug', 'delivered', 'blocked'];
 
@@ -104,3 +105,4 @@ export function DashboardFilters({
     </div>
   );
 }
+
