@@ -2,7 +2,7 @@
 // Actual override of global console or deep integration with Datadog/PagerDuty
 // would require more extensive setup and possibly backend components.
 
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import { trace, context, SpanStatusCode, Attributes } from '@opentelemetry/api';
 
 /**
  * Enhanced console logging utility.
@@ -35,21 +35,63 @@ export const logger = {
     switch (level) {
       case 'error':
         console.error(fullLogMessage);
-        currentSpan?.setStatus({ code: SpanStatusCode.ERROR, message: message });
-        if (data && (data as any).error instanceof Error) {
-          currentSpan?.recordException((data as any).error);
-        } else if (typeof data === 'string') {
-          currentSpan?.recordException(data);
+        if (currentSpan) {
+            currentSpan.setStatus({ code: SpanStatusCode.ERROR, message: message });
+
+            let exceptionToRecord: Error;
+            const exceptionAttributes: Attributes = {};
+
+            // Populate attributes from data, prefixing to avoid clashes
+            if (typeof data === 'object' && data !== null) {
+                Object.entries(data).forEach(([key, value]) => {
+                    if (key !== 'error') { // Avoid duplicating the error object itself if present in data
+                        exceptionAttributes[`log.data.${key}`] = String(value); // Convert all attribute values to string
+                    }
+                });
+            }
+
+            if (data && (data as any).error instanceof Error) {
+              exceptionToRecord = (data as any).error;
+            } else if (typeof data === 'string' && data.length > 0) {
+              exceptionToRecord = new Error(data); // Treat data string as error message
+              if (message !== data) { // If original message is different, add it as an attribute
+                exceptionAttributes['original.message'] = message;
+              }
+            } else {
+              exceptionToRecord = new Error(message); // Default to original message
+            }
+            
+            currentSpan.recordException(exceptionToRecord, exceptionAttributes);
         }
         break;
       case 'warn':
         console.warn(fullLogMessage);
-        currentSpan?.addEvent(`WARN: ${message}`, typeof data === 'object' ? data as Record<string, any> : {data});
+        if (currentSpan) {
+            const eventAttributes: Attributes = {};
+            if (typeof data === 'object' && data !== null) {
+                Object.entries(data).forEach(([key, value]) => {
+                    eventAttributes[`log.data.${key}`] = String(value);
+                });
+            } else if (data !== undefined) {
+                eventAttributes['log.data'] = String(data);
+            }
+            currentSpan.addEvent(`WARN: ${message}`, eventAttributes);
+        }
         break;
       case 'info':
       default:
         console.log(fullLogMessage);
-        currentSpan?.addEvent(`INFO: ${message}`, typeof data === 'object' ? data as Record<string, any> : {data});
+         if (currentSpan) {
+            const eventAttributes: Attributes = {};
+            if (typeof data === 'object' && data !== null) {
+                Object.entries(data).forEach(([key, value]) => {
+                    eventAttributes[`log.data.${key}`] = String(value);
+                });
+            } else if (data !== undefined) {
+                eventAttributes['log.data'] = String(data);
+            }
+            currentSpan.addEvent(`INFO: ${message}`, eventAttributes);
+        }
         break;
     }
 
