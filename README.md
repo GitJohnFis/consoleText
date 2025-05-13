@@ -27,3 +27,4 @@ This is a Svelte application for displaying a simulated log stream and incident 
 -   `npm run preview`: Serves the production build locally for preview.
 -   `npm run check`: Runs Svelte type checking.
 ## Logging for all tingz
+[![Run Datadog Synthetic tests](https://github.com/GitJohnFis/consoleText/actions/workflows/datadog-synthetics.yml/badge.svg)](https://github.com/GitJohnFis/consoleText/actions/workflows/datadog-synthetics.yml)
